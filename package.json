@@ -1,0 +1,23 @@
+{
+  "name": "streamsplit",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Offline byte-chunk regression tests for SSE consumers",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node src/cli.js check",
+    "demo:broken": "node src/cli.js check --broken",
+    "replay": "node src/cli.js replay"
+  },
+  "license": "MIT",
+  "exports": {
+    ".": "./src/harness.js",
+    "./partitions": "./src/partitions.js",
+    "./fixtures": "./fixtures/sse.js",
+    "./examples": "./examples/consumers.js"
+  }
+}
