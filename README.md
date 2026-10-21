@@ -4,7 +4,7 @@
 
 StreamSplit is a dependency-free, offline regression harness for Server-Sent Events (SSE) consumers. It helps find bugs that disappear when a response arrives in one piece and reappear when a UTF-8 character or line ending straddles chunks.
 
-Status: first increment, version 0.0.1. This is a small test harness, not a production SSE client or a complete conformance suite. Released under the [MIT license](LICENSE).
+Status: early prototype, version 0.0.1. This is a small test harness, not a production SSE client or a complete conformance suite. Released under the [MIT license](LICENSE).
 
 ## Run in a minute
 
@@ -26,6 +26,8 @@ node src/cli.js replay artifacts/broken-utf8.json           # exits 0
 ```
 
 Exit codes: `0` all assertions pass; `1` a regression is detected; `2` invalid usage or an operational error. `npm test`, `npm run demo`, and `npm run demo:broken` are equivalent shortcuts.
+
+`node --test` includes CLI regression tests: they assert the broken command's exit code is exactly `1`, then replay its artifacts with both consumers. Artifacts created by these tests live in temporary directories and are cleaned up automatically. Run just the CLI checks with `node --test test/cli.test.js`.
 
 ## Test your consumer
 
@@ -72,12 +74,14 @@ Artifacts can contain response contents. Use synthetic or appropriately redacted
 - The good example uses streaming UTF-8 decoding but buffers decoded text before parsing. It validates final event results, not delivery timing or bounded-memory streaming.
 - Retry fields have no event output; retry state, reconnects, HTTP, cancellation, and backpressure are out of scope.
 - Empty input is covered; injected empty chunks and huge fixtures are not yet part of the generated matrix.
-- There is no external parser adapter, browser validation, shrinking, benchmark, CI run, package publication, or complete standards compliance claim.
-- JavaScript ESM and JSDoc run directly without a TypeScript compiler. The declared Node 22 minimum has not yet been tested; the verified runtime is Node 24.19.0.
+- There is no external parser adapter, browser validation, shrinking, benchmark, package publication, or complete standards compliance claim.
+- JavaScript ESM and JSDoc run directly without a TypeScript compiler. Locally verified runtimes are Node 22.23.3 and 24.19.0 on Linux; other versions and operating systems have not been tested locally.
 
 ## Verification
 
-On Node 24.19.0, the first increment passes 28 tests and all 803 good-consumer partition checks. The deliberately broken consumer produces 66 failures across UTF-8/BOM cases. A JSON round trip reproduces a broken-decoder failure; the same artifact passes against the good decoder. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
+On Node 22.23.3 and 24.19.0, all 38 tests pass, including 10 end-to-end CLI checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. Saved artifacts reproduce both broken-decoder failures and pass against the good decoder.
+
+The [CI workflow](.github/workflows/ci.yml) runs the full suite on Node 22 and 24 for pushes to `main` and pull requests. Configuration and local results are not proof of a hosted run: check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the result on a specific commit. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
 ## 中文简介
 
