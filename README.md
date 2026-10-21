@@ -1,31 +1,81 @@
 # StreamSplit
 
+[![CI](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml)
+[English](#run-in-a-minute) · [中文快速开始](#中文快速开始)
+
 **Same bytes. Different chunks. Same events?**
 
-StreamSplit is a dependency-free, offline regression harness for Server-Sent Events (SSE) consumers. It helps find bugs that disappear when a response arrives in one piece and reappear when a UTF-8 character or line ending straddles chunks.
+Catch SSE bugs that only appear when a UTF-8 character or line ending crosses a chunk boundary. StreamSplit replays the same bytes through your consumer with different cuts, checks the resulting events, and saves failing cases for exact replay.
+
+For JavaScript developers writing or wrapping Server-Sent Events (SSE) consumers: turn an intermittent garbled-text bug into a small, offline regression test. The core has no dependencies and needs no API key or live server.
 
 Status: early prototype, version 0.0.1. This is a small test harness, not a production SSE client or a complete conformance suite. Released under the [MIT license](LICENSE).
 
 ## Run in a minute
 
-Requires Node.js 22 or later. No install, network, API key, or account is needed.
+Requires Git and **Node.js 22 or later**. Clone once; the demo and tests then run offline, with no dependency installation or account needed.
+
+```sh
+git clone https://github.com/yie793379z-prog/streamsplit.git
+cd streamsplit
+node examples/utf8-demo.js
+```
+
+Expected output, generated from the included UTF-8 fixture and verified by tests:
+
+<!-- utf8-demo-output -->
+```text
+StreamSplit: same bytes, different chunks
+Unsplit / broken decoder: "你好 🌊 café"
+Cut at byte 7 / broken decoder: "���好 🌊 café"
+Cut at byte 7 / streaming decoder: "你好 🌊 café"
+PASS: reproduced the UTF-8 bug and verified the fix.
+```
+
+The cut is inside `你`. A new decoder for each chunk corrupts the text; one streaming decoder preserves it. This demo exits `0` only after asserting that the bug reproduces and the fixed consumer passes. It writes no files. See the [demo](examples/utf8-demo.js) and the [two consumers](examples/consumers.js).
+
+### Run the full checks and replay a failure
+
+From the same directory:
 
 ```sh
 node --test
 node src/cli.js check
+```
+
+The good consumer finishes with:
+
+```text
+803 partition checks; 0 failures (good consumer)
+```
+
+Now try the deliberately broken decoder:
+
+```sh
 node src/cli.js check --broken
 ```
 
-The last command is **supposed to exit 1**. It uses a deliberately broken consumer that creates a new UTF-8 decoder for each chunk. A split inside `你` turns the character into replacement characters even though the unsplit response is correct.
+This command is **supposed to exit `1`**. Its last line is:
 
-The failing run writes the first failing partition for each fixture to `artifacts/`. Replay exactly those bytes and cuts:
-
-```sh
-node src/cli.js replay artifacts/broken-utf8.json --broken  # exits 1
-node src/cli.js replay artifacts/broken-utf8.json           # exits 0
+```text
+803 partition checks; 66 failures (deliberately broken consumer)
 ```
 
-Exit codes: `0` all assertions pass; `1` a regression is detected; `2` invalid usage or an operational error. `npm test`, `npm run demo`, and `npm run demo:broken` are equivalent shortcuts.
+It writes the first failing partition for each fixture to `artifacts/`. Run these commands separately to replay exactly those bytes and cuts:
+
+```sh
+node src/cli.js replay artifacts/broken-utf8.json --broken
+```
+
+Expected: exit `1`; `actual.events[0].data` is `"���好 🌊 café"`, and both `matchesExpected` and `chunkInvariant` are `false`.
+
+```sh
+node src/cli.js replay artifacts/broken-utf8.json
+```
+
+Expected: exit `0`; the data is `"你好 🌊 café"`, and both checks are `true`. The saved bytes and cuts stay unchanged.
+
+CLI exit codes: `0` all assertions pass; `1` a regression is detected; `2` invalid usage or an operational error. Shortcuts: `npm test`, `npm run demo:utf8`, `npm run demo`, and `npm run demo:broken`.
 
 `node --test` includes CLI regression tests: they assert the broken command's exit code is exactly `1`, then replay its artifacts with both consumers. Artifacts created by these tests live in temporary directories and are cleaned up automatically. Run just the CLI checks with `node --test test/cli.test.js`.
 
@@ -79,14 +129,68 @@ Artifacts can contain response contents. Use synthetic or appropriately redacted
 
 ## Verification
 
-On Node 22.23.3 and 24.19.0, all 38 tests pass, including 10 end-to-end CLI checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. Saved artifacts reproduce both broken-decoder failures and pass against the good decoder.
+On Node 22.23.3 and 24.19.0, all 40 tests pass, including 10 end-to-end CLI checks and two first-run demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. Saved artifacts reproduce both broken-decoder failures and pass against the good decoder.
 
-The [CI workflow](.github/workflows/ci.yml) runs the full suite on Node 22 and 24 for pushes to `main` and pull requests. Configuration and local results are not proof of a hosted run: check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the result on a specific commit. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
+Hosted CI passed all 38 tests present at commit [`48d03da`](https://github.com/yie793379z-prog/streamsplit/commit/48d03daffa90ca2f3a30468e83de8598a4c7a335) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39562700416)). The [CI workflow](.github/workflows/ci.yml) runs the full suite for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
-## 中文简介
+## 中文快速开始
 
-StreamSplit 是一个离线的 SSE 分块回归测试工具：把同一段字节按不同位置切开，检查解析结果是否仍与预期一致。它特别适合定位 UTF-8 字符跨块时的乱码问题。
+StreamSplit 面向编写或封装 SSE 消费端的 JavaScript 开发者：将同一段字节按不同位置切开，检查事件内容是否仍然正确，并保存失败用例供精确重放。适合把偶发的 UTF-8 跨块乱码变成可复现的回归测试。
 
-直接运行 `node --test` 即可测试，不需要安装依赖、联网或 API Key。`node src/cli.js check --broken` 会故意失败并生成可复现的 JSON 文件；换用正确解析器重放后应通过。
+需要 Git 和 **Node.js 22 或更新版本**。首次克隆需要联网；之后运行示例和测试无需安装依赖、联网、API Key 或账号。
+
+```sh
+git clone https://github.com/yie793379z-prog/streamsplit.git
+cd streamsplit
+node examples/utf8-demo.js
+```
+
+实际输出如下，英文和中文示例中的输出都由自动化测试校验：
+
+<!-- utf8-demo-output -->
+```text
+StreamSplit: same bytes, different chunks
+Unsplit / broken decoder: "你好 🌊 café"
+Cut at byte 7 / broken decoder: "���好 🌊 café"
+Cut at byte 7 / streaming decoder: "你好 🌊 café"
+PASS: reproduced the UTF-8 bug and verified the fix.
+```
+
+第 7 个字节处的切分落在 `你` 的 UTF-8 编码内部。每块各建一个解码器会产生乱码；复用同一个流式解码器即可保留完整字符。这个演示确认“错误可复现、修复后通过”后以 `0` 退出，不生成文件。
+
+继续在仓库目录运行：
+
+```sh
+node --test
+node src/cli.js check
+```
+
+正确消费者的最后一行是 `803 partition checks; 0 failures (good consumer)`。
+
+下面的命令用于故意触发失败，**预期退出码为 `1`**，会生成 `artifacts/broken-utf8.json` 和 `artifacts/broken-bom.json`：
+
+```sh
+node src/cli.js check --broken
+```
+
+输出为 803 个分块检查、66 个预期失败。分别运行下面两个重放命令：
+
+```sh
+node src/cli.js replay artifacts/broken-utf8.json --broken
+```
+
+预期退出 `1`，文本为 `���好 🌊 café`，`matchesExpected` 和 `chunkInvariant` 均为 `false`。
+
+```sh
+node src/cli.js replay artifacts/broken-utf8.json
+```
+
+预期退出 `0`，文本恢复为 `你好 🌊 café`，两项检查均为 `true`。接入自己的消费者请参阅 [Test your consumer](#test-your-consumer)。
 
 当前版本只验证最终事件内容，不验证实时派发、网络重连或性能；采用 [MIT 开源许可证](LICENSE)。
+
+## Useful to you?
+
+If this helps you catch a streaming bug, a star makes the project easier to find again. Reproducible bug reports and small synthetic fixtures are welcome too; remove private response data before sharing.
+
+如果它帮你定位了流式解析问题，欢迎点个 Star，方便以后找到。也欢迎提供可复现的问题和小型合成测试用例；分享前请移除私密响应内容。

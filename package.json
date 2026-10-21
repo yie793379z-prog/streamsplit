@@ -10,6 +10,7 @@
   "scripts": {
     "test": "node --test",
     "demo": "node src/cli.js check",
+    "demo:utf8": "node examples/utf8-demo.js",
     "demo:broken": "node src/cli.js check --broken",
     "replay": "node src/cli.js replay"
   },
