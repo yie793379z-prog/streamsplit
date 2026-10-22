@@ -1,0 +1,5 @@
+eventsource-parser 4.1.2 (optional adapter)
+20 fixtures; 1183 partition checks; 0 failures
+Saved-format replay / broken decoder: "���好 🌊 café"
+Saved-format replay / real parser adapter: "你好 🌊 café"
+PASS: parser integration and version-1 replay verified; no files written.

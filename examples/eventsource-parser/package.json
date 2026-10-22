@@ -1,0 +1,17 @@
+{
+  "name": "streamsplit-eventsource-parser-example",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "test": "node --test adapter-checks.js",
+    "demo": "node demo.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "eventsource-parser": "4.1.2"
+  }
+}

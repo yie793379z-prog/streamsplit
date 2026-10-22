@@ -36,3 +36,7 @@ jobs:
         run: node --version
       - name: Run unit and CLI regression tests
         run: node --test
+      - name: Install pinned optional parser (no lifecycle scripts)
+        run: npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fund
+      - name: Run real parser adapter regression tests
+        run: npm test --prefix examples/eventsource-parser

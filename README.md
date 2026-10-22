@@ -34,7 +34,7 @@ PASS: reproduced the UTF-8 bug and verified the fix.
 
 The cut is inside `你`. A new decoder for each chunk corrupts the text; one streaming decoder preserves it. This demo exits `0` only after asserting that the bug reproduces and the fixed consumer passes. It writes no files. See the [demo](examples/utf8-demo.js) and the [two consumers](examples/consumers.js).
 
-### Run the full checks and replay a failure
+### Run the core checks and replay a failure
 
 From the same directory:
 
@@ -100,6 +100,18 @@ console.log(report.cases.filter(c => !c.matchesExpected || !c.chunkInvariant));
 
 When used as a local package dependency, the exports are `streamsplit` (harness), `streamsplit/partitions`, `streamsplit/fixtures`, and `streamsplit/examples`. This repository is not published to npm.
 
+### Try a real third-party parser
+
+The optional [eventsource-parser adapter](examples/eventsource-parser/README.md) pins **4.1.2** (MIT, no runtime dependencies) in a separate package. It requires **Node ≥22.12**. From the repository root:
+
+```sh
+npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fund
+npm test --prefix examples/eventsource-parser
+node examples/eventsource-parser/demo.js
+```
+
+Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` still runs the 40 dependency-free core tests; CI runs both suites.
+
 Each partition is checked against two independent expectations:
 
 - **Expected events:** manually specified fixture output, to catch consistently wrong parsers.
@@ -123,15 +135,15 @@ Artifacts can contain response contents. Use synthetic or appropriately redacted
 
 - The good example uses streaming UTF-8 decoding but buffers decoded text before parsing. It validates final event results, not delivery timing or bounded-memory streaming.
 - Retry fields have no event output; retry state, reconnects, HTTP, cancellation, and backpressure are out of scope.
-- Empty input is covered; injected empty chunks and huge fixtures are not yet part of the generated matrix.
-- There is no external parser adapter, browser validation, shrinking, benchmark, package publication, or complete standards compliance claim.
-- JavaScript ESM and JSDoc run directly without a TypeScript compiler. Locally verified runtimes are Node 22.23.3 and 24.19.0 on Linux; other versions and operating systems have not been tested locally.
+- Empty input is covered. The optional adapter tests inject empty chunks; the core generator does not yet include them or huge fixtures.
+- There is one pinned external parser example; browser validation, shrinking, benchmarks, package publication, and complete standards compliance remain out of scope.
+- JavaScript ESM and JSDoc run directly without a TypeScript compiler. See the [verification record](docs/VERIFICATION.md) for tested runtimes and platforms.
 
 ## Verification
 
-On Node 22.23.3 and 24.19.0, all 40 tests pass, including 10 end-to-end CLI checks and two first-run demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. Saved artifacts reproduce both broken-decoder failures and pass against the good decoder.
+The core has 40 tests, including 10 end-to-end CLI checks and two first-run demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay.
 
-Hosted CI passed all 38 tests present at commit [`48d03da`](https://github.com/yie793379z-prog/streamsplit/commit/48d03daffa90ca2f3a30468e83de8598a4c7a335) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39562700416)). The [CI workflow](.github/workflows/ci.yml) runs the full suite for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
+Hosted CI passed the 40-test baseline [`542abf4`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939)). The [CI workflow](.github/workflows/ci.yml) now runs core and optional adapter suites for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
 ## 中文快速开始
 
@@ -188,6 +200,18 @@ node src/cli.js replay artifacts/broken-utf8.json
 预期退出 `0`，文本恢复为 `你好 🌊 café`，两项检查均为 `true`。接入自己的消费者请参阅 [Test your consumer](#test-your-consumer)。
 
 当前版本只验证最终事件内容，不验证实时派发、网络重连或性能；采用 [MIT 开源许可证](LICENSE)。
+
+### 可选：真实第三方解析器
+
+已提供固定版本 **eventsource-parser 4.1.2** 的[双语适配示例](examples/eventsource-parser/README.md)，需要 **Node ≥22.12**。首次安装需要联网，之后运行离线：
+
+```sh
+npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fund
+npm test --prefix examples/eventsource-parser
+node examples/eventsource-parser/demo.js
+```
+
+预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 仍只运行无需依赖的 40 项核心测试；CI 会分别执行两套测试。依赖采用 MIT 许可，无运行时传递依赖。
 
 ## Useful to you?
 
