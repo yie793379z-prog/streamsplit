@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fixtures } from '../fixtures/sse.js';
 import { goodConsumer, brokenUtf8Consumer } from '../examples/consumers.js';
 import { checkFixture, makeReplay, replay } from './harness.js';
+import { readReplayFile } from './replay-file.js';
 
 const [command = 'check', ...args] = process.argv.slice(2);
 const broken = args.includes('--broken');
@@ -29,7 +30,7 @@ try {
   } else if (command === 'replay') {
     const paths = args.filter(a => a !== '--broken');
     if (paths.length !== 1) throw new Error('Usage: node src/cli.js replay <artifact.json> [--broken]');
-    const result = await replay(consumer, JSON.parse(await readFile(paths[0], 'utf8')));
+    const result = await replay(consumer, await readReplayFile(paths[0]));
     console.log(JSON.stringify(result, null, 2));
     process.exitCode = result.matchesExpected && result.chunkInvariant ? 0 : 1;
   } else throw new Error(`Unknown command: ${command}`);

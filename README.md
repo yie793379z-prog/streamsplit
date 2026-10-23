@@ -110,7 +110,7 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` still runs the 40 dependency-free core tests; CI runs both suites.
+Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 69 dependency-free core tests; CI runs both suites.
 
 Each partition is checked against two independent expectations:
 
@@ -129,7 +129,40 @@ The generator includes an unsplit baseline, every single interior cut for stream
 
 A version-1 JSON artifact stores original bytes as base64, interior byte offsets, expected events, observed output, baseline, fixture name, and partition label. Replay uses the stored bytes and cuts, so it does not depend on the current fixture text or PRNG. It recomputes the baseline using your selected consumer. Artifacts contain data, never executable adapter paths.
 
-Artifacts can contain response contents. Use synthetic or appropriately redacted data before sharing them. Generated artifacts are gitignored. Treat the harness and replay inputs as trusted local test material: this increment has no resource quotas, subprocess isolation, or timeout for a hanging consumer.
+Artifacts can contain response contents. Use synthetic or appropriately redacted data before sharing them. Generated artifacts are gitignored. Version 1 remains unchanged: existing normalized artifacts within the limits below still replay, and optional diagnostic metadata (`fixture`, `partition`, `observed`, `baseline`) is not required or executed. Replay recomputes both results rather than trusting saved observations.
+
+## Input limits and validation
+
+The harness is for small, trusted local regression fixtures, not large captures. Fixed limits are exported as the frozen `LIMITS` object from `streamsplit` (or `./src/harness.js`); they are not configurable overrides.
+
+| Input or work budget | Maximum |
+| --- | --- |
+| Fixture or decoded replay bytes; direct `partitions`/`chunkBytes` input | 16,384 bytes (16 KiB) |
+| `randomCases` | 256 |
+| Partition candidates, **before deduplication** | 512 |
+| Expected events | 256 |
+| Combined UTF-8 bytes in expected `type`, `data`, `lastEventId` strings | 65,536 bytes (64 KiB) |
+| Fixture name, nonempty string | 256 UTF-8 bytes |
+| Replay JSON file read by the CLI, including whitespace/diagnostics | 1,048,576 bytes (1 MiB) |
+
+Fixtures must supply a `Uint8Array` (including `Buffer`) and an expected array of records containing **exactly** the three own string fields `{ type, data, lastEventId }`. Sparse arrays, coercible byte arrays/strings, malformed records, noncanonical base64, and unsorted, repeated, fractional, or non-interior cuts are rejected. Empty bytes and empty expected arrays remain valid. Replay offsets must be an array of sorted unique interior byte positions; their count cannot exceed `max(0, byteLength - 1)`.
+
+The candidate budget is `2 + singleCuts + randomCases`: one whole candidate, one bytewise candidate, and `singleCuts = max(0, byteLength - 1)` only when `byteLength <= singleSplitLimit` (otherwise zero). Duplicates count toward this budget, even for empty inputs. Lower `randomCases` or `singleSplitLimit` if a request exceeds it. Default fixtures, seeds, partition labels, and the 803/1183 check totals are unchanged.
+
+Validation rejects invalid inputs with `TypeError` or `RangeError` **before any consumer call**. This differs from consumer exceptions/malformed output, which remain captured regression results. The CLI reports invalid input on stderr, writes no replay result to stdout, and exits `2`; oversized files are rejected before JSON parsing, and reading remains bounded even if a file grows after the size check. Only regular files (including symlinks to regular files) are accepted.
+
+These are **input/work bounds, not a security sandbox or total-memory guarantee**. Consumer execution, returned output, JavaScript getters/proxies, and caller-owned objects remain trusted: there is no timeout, subprocess isolation, or output quota. Large or sensitive captures should be reduced/redacted first. Generated diagnostics also count toward the CLI file limit: a `makeReplay` artifact larger than 1 MiB cannot be replayed through the CLI.
+
+Run the self-checking, no-file-write demonstration with `node examples/limits-demo.js` (or `npm run demo:limits`):
+
+<!-- limits-demo-output -->
+```text
+StreamSplit: bounded inputs before consumer execution
+PASS: 16384-byte input accepted
+REJECT: bytes exceed 16384-byte limit (consumer calls: 0)
+REJECT: partition candidates exceed 512 limit; lower randomCases or singleSplitLimit (consumer calls: 0)
+PASS: version-1 replay remains compatible
+```
 
 ## Honest boundaries
 
@@ -141,7 +174,7 @@ Artifacts can contain response contents. Use synthetic or appropriately redacted
 
 ## Verification
 
-The core has 40 tests, including 10 end-to-end CLI checks and two first-run demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay.
+The core has 69 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, and four demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay.
 
 Hosted CI passed the 40-test baseline [`542abf4`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939)). The [CI workflow](.github/workflows/ci.yml) now runs core and optional adapter suites for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
@@ -201,6 +234,25 @@ node src/cli.js replay artifacts/broken-utf8.json
 
 当前版本只验证最终事件内容，不验证实时派发、网络重连或性能；采用 [MIT 开源许可证](LICENSE)。
 
+### 输入边界与验证
+
+固定上限：夹具/重放字节 **16 KiB**，随机候选 **256** 个，去重前总候选 **512** 个，预期事件 **256** 个，预期事件三个字符串字段的 UTF-8 总量 **64 KiB**，非空夹具名称 **256 UTF-8 字节**；CLI 重放 JSON 文件（含空白和诊断内容）最多 **1 MiB**，只读取普通文件。可从主 API 导入只读 `LIMITS`，不能通过参数放宽上限。
+
+夹具字节须为 `Uint8Array` 或 `Buffer`；预期事件必须仅包含自有字符串字段 `{ type, data, lastEventId }`。候选预算为 `2 + 单切分数 + randomCases`，即使随后会被去重，也先计入预算；超限时降低 `randomCases` 或 `singleSplitLimit`。非法形状、非规范 base64、错误切分位置和超限输入均在执行消费者前拒绝；CLI 输出明确错误并退出 `2`。空输入和符合约定、未超限的旧版 v1 重放数据仍然有效，803/1183 次检查结果不变。
+
+运行 `node examples/limits-demo.js`（或 `npm run demo:limits`），演示会断言边界可接受、超限时消费者调用次数为零、旧版重放可用；不写文件：
+
+<!-- limits-demo-output -->
+```text
+StreamSplit: bounded inputs before consumer execution
+PASS: 16384-byte input accepted
+REJECT: bytes exceed 16384-byte limit (consumer calls: 0)
+REJECT: partition candidates exceed 512 limit; lower randomCases or singleSplitLimit (consumer calls: 0)
+PASS: version-1 replay remains compatible
+```
+
+这些是输入/工作量边界，不是安全沙箱或总内存保证；消费者代码及输出、JavaScript getter/proxy 等仍须可信，不提供超时、子进程隔离或输出配额。完整规则见 [Input limits and validation](#input-limits-and-validation)。
+
 ### 可选：真实第三方解析器
 
 已提供固定版本 **eventsource-parser 4.1.2** 的[双语适配示例](examples/eventsource-parser/README.md)，需要 **Node ≥22.12**。首次安装需要联网，之后运行离线：
@@ -211,7 +263,7 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 仍只运行无需依赖的 40 项核心测试；CI 会分别执行两套测试。依赖采用 MIT 许可，无运行时传递依赖。
+预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 69 项核心测试；CI 会分别执行两套测试。依赖采用 MIT 许可，无运行时传递依赖。
 
 ## Useful to you?
 

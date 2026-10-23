@@ -1,6 +1,8 @@
 # Verification
 
-Verified locally on 2026-10-22 on macOS arm64 using Node.js v22.12.0 (the optional parser's minimum version) and v24.14.1. Both runtimes pass the 40 core tests and 26 optional integration tests. The Node 22 archive came from the official Node.js distribution and matched its published SHA-256 checksum. Historical core verification also passed on Linux x64 with Node v22.23.3 and v24.19.0.
+Verified locally on 2026-10-23 on Linux x64 using Node.js v22.23.3 and v24.19.0: **69 core tests and 26 optional integration tests pass on each runtime**, with no skipped tests. This input-bounds increment is based on main `01ab58c626f6f9d3df949e9487576f148bcb1af0`; its final published commit requires separate hosted CI verification.
+
+Historical adapter verification on 2026-10-22 passed the then-current 40 core tests and 26 adapter tests on macOS arm64 with Node v22.12.0 (the optional parser's minimum) and v24.14.1. That Node 22 archive came from the official distribution and matched its published SHA-256 checksum. Those macOS results are not a rerun of this input-bounds revision.
 
 Core tests and CLI require no installation. The optional example needs one npm install, then its tests and demo run offline with synthetic data, no server or credentials. Reproduce its locked installation with:
 
@@ -10,11 +12,12 @@ npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fun
 
 | Command | Result | Expected exit |
 | --- | --- | --- |
-| `node --test` | 40 tests passed, 0 failed | 0 |
+| `node --test` | 69 tests passed, 0 failed | 0 |
 | `npm test --prefix examples/eventsource-parser` | 26 integration tests passed, 0 failed | 0 |
 | `node examples/eventsource-parser/demo.js` | 20 fixtures, 1183 partitions, 0 failures; broken UTF-8 replay passes with real parser | 0 |
 | `node examples/utf8-demo.js` | Reproduces UTF-8 corruption at byte 7, then verifies fixed replay; no files written | 0 |
-| `node --test test/cli.test.js` | 10 CLI integration tests passed, 0 failed | 0 |
+| `node examples/limits-demo.js` | Exact byte limit accepted, oversized bytes/excess partitions rejected before consumers; v1 replay passes; no files written | 0 |
+| `node --test test/cli.test.js` | 21 CLI integration tests passed, 0 failed | 0 |
 | `node src/cli.js check` | 803 partitions, 0 failures, 15 fixtures | 0 |
 | `node src/cli.js check --broken` | 803 partitions, 66 intentional failures | 1 |
 | `node src/cli.js replay artifacts/broken-utf8.json --broken` | Expected-output and invariance checks both fail | 1 |
@@ -22,13 +25,25 @@ npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fun
 
 The broken consumer's failures are concentrated in UTF-8 (40) and BOM (26) fixtures. The first saved UTF-8 failure changes `你好 🌊 café` into `���好 🌊 café`, while its unsplit baseline remains correct.
 
-The 28 library tests verify deterministic and unique partitions, byte preservation, bounded single-cut enumeration, invalid cuts/options, consistently wrong but invariant consumers, async adapters, exceptions, malformed outputs, replay JSON round-tripping, malformed replay rejection, protection against input mutation, and package entry points.
+The original 28 library tests verify deterministic and unique partitions, byte preservation, bounded single-cut enumeration, invalid cuts/options, consistently wrong but invariant consumers, async adapters, exceptions, malformed outputs, replay JSON round-tripping, malformed replay rejection, protection against input mutation, and package entry points.
 
-The 10 CLI tests run real child processes using the same Node executable as the test runner. They check the default/explicit good command; the deliberately broken command's exact exit code `1`, failure totals, and two JSON artifacts; broken and fixed replay of both artifacts; invalid usage; and missing, invalid JSON, or malformed replay files returning `2`. Each test uses an isolated temporary working directory that is cleaned up afterward. Child processes have a ten-second timeout and one-MiB output limit; these are test safeguards, not limits on the library or CLI itself. Runtime warnings on stderr are allowed; CLI errors are checked explicitly.
+The 21 CLI tests run real child processes using the same Node executable as the test runner. They check the default/explicit good command; the deliberately broken command's exact exit code `1`, failure totals, and two JSON artifacts; broken and fixed replay of both artifacts; invalid usage; and missing, invalid JSON, or malformed replay files returning `2`. New checks cover a replay file exactly at 1 MiB and one byte above (including whitespace), directories, regular-file symlinks, a POSIX FIFO without a writer, and clear rejection of oversized bytes/events/text, bad base64, or invalid cuts. Each test uses an isolated temporary working directory that is cleaned up afterward. Child processes have a ten-second timeout and one-MiB output limit; these are test safeguards, separate from the CLI input-file cap. Runtime warnings on stderr are allowed; CLI errors are checked explicitly. Symlink/FIFO tests are skipped on Windows, which was not tested locally.
 
 The two first-run checks run `examples/utf8-demo.js` as a real child process, assert its exact output and successful exit, confirm that it writes no files, and keep the English and Chinese README output blocks in sync with that verified output. The demo uses the same UTF-8 fixture and replay functions as the CLI and asserts the broken and corrected behavior before reporting success.
 
 The first-run increment exercised its complete clone/change-directory/demo quickstart and the documented test, check, and replay commands from a fresh checkout. The intentional failures were checked for exit code `1`, not ignored; those CLI and replay checks remain in the core suite.
+
+## Input bounds and version-1 compatibility
+
+The 16 new API tests cover the fixed byte/random/partition/event/text/name budgets at their exact boundaries and one step above, with a zero-call consumer spy for invalid requests. They also cover malformed options/fixtures/expected records (including sparse arrays), canonical base64, invalid cut types/counts/order/offsets, immutable exported limits, empty/Buffer-backed inputs, and `makeReplay` validation. The total library count is now 44. Candidate counts are checked before deduplication and cut allocation; duplicate output partitions do not exempt work from the budget.
+
+Two new demonstration/documentation tests execute `examples/limits-demo.js`, verify exact output, assert no file writes, and keep its English/Chinese README blocks synchronized. The four demo checks plus 44 API/library and 21 CLI checks make 69 core tests. Original good/broken totals remain **803/0** and **803/66**; the real adapter remains **1183/0**.
+
+Version 1 is unchanged. Old normalized artifacts within the new limits still pass with the fixed consumer and reproduce the known broken decoder. Minimal artifacts without `fixture`, `partition`, `observed`, or `baseline` are explicitly accepted; saved diagnostics are ignored and baseline is recomputed. Previously accepted non-normalized expected records and oversized inputs now reject intentionally. This is not a guarantee that every formerly accepted arbitrary JavaScript object will remain accepted.
+
+The CLI opens files nonblocking on POSIX, requires a regular file, checks initial size, then reads at most the cap plus one sentinel byte before JSON parsing. This guards allocation even if size changes after `stat`; the size-boundary and FIFO behavior are tested without a race-dependent growth test. No input or expected-output quota is a total-memory guarantee: consumer output/execution, JavaScript getters/proxies, and caller-owned objects remain trusted. No consumer timeout, sandbox, streaming-performance or full-conformance claim is made.
+
+No new third-party dependencies or workflow permissions were added. The existing locked `eventsource-parser` 4.1.2 was installed from the official npm registry with lifecycle scripts disabled; its installed MIT license, manifest version, and absence of runtime dependencies were rechecked. The original code remains MIT licensed. A scoped publication review checks the changed source/tests/docs for credentials, private captures, local paths, accidental dependencies, and whitespace errors; this is not a full security or license audit.
 
 ## Optional real parser integration
 
@@ -53,8 +68,8 @@ The workflow requests only `contents: read`, disables persisted checkout credent
 
 These actions are CI-tooling dependencies only; root `package.json` still has no runtime or development dependencies. The optional example has one separately locked MIT dependency. The original code remains MIT licensed. This review is not a full audit of the actions' transitive dependencies.
 
-Hosted run [39602457939](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939) succeeded for the 40-test baseline [`542abf45e4cc2056879a8ddc451a853954ba1c31`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24. This was rechecked before the adapter changes; the prior CI gap is resolved. It is not hosted evidence for this new adapter revision. After publication, check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the exact commit and both jobs before claiming its hosted verification.
+Hosted run [39602457939](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939) succeeded for the 40-test baseline [`542abf45e4cc2056879a8ddc451a853954ba1c31`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24. This was rechecked before the adapter changes; the prior CI gap is resolved. It is not hosted evidence for the current input-bounds revision. After publication, check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the exact commit and both jobs before claiming its hosted verification.
 
 Not run locally for this increment: other Node versions or operating systems, browsers, HTTP/reconnection/retry-state/timing checks, external lint/type checking, or package publication. The adapter validates final events; it does not establish full SSE conformance or memory bounds. Hosted CI for this exact revision must be checked after publication.
 
-中文摘要：本次在 macOS arm64 的 Node 22.12.0 和 24.14.1 上验证 40 项核心测试、26 项可选适配测试。第三方解析器固定为 4.1.2，20 个合成夹具的 1183 次分块检查通过，并验证两种负对照及旧版 JSON 重放。核心仍无依赖，只有可选示例首次安装需要联网。MIT 许可、锁文件和无运行时传递依赖已检查；远端 CI 必须按发布后的精确提交另行确认，不能拿旧版本的成功记录代替。
+中文摘要：本次在 Linux x64 的 Node 22.23.3 和 24.19.0 上验证 69 项核心测试、26 项可选适配测试，均无跳过。新增固定输入/候选预算、零消费者调用的拒绝验证、CLI 1 MiB 文件边界，以及双语可复现演示；旧版 v1 合规重放保持兼容。先前 macOS 的测试结果仅为历史记录。第三方解析器固定为 4.1.2，20 个合成夹具的 1183 次分块检查通过，并验证两种负对照及旧版 JSON 重放。核心仍无依赖，只有可选示例首次安装需要联网。MIT 许可、锁文件和无运行时传递依赖已检查；远端 CI 必须按发布后的精确提交另行确认，不能拿旧版本的成功记录代替。

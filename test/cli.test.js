@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LIMITS } from '../src/harness.js';
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
@@ -106,5 +107,77 @@ for (const { content, name, error } of [
     const result = run(cwd, ['replay', 'invalid.json'], 2);
     assert.equal(result.stdout, '');
     assert.match(result.stderr, error);
+  });
+}
+
+const minimalReplay = { format: 'streamsplit-replay', version: 1, bytesBase64: '', cuts: [], expected: [] };
+
+test('CLI accepts a replay file exactly at the byte cap, including JSON whitespace', t => {
+  const cwd = workspace(t);
+  const json = JSON.stringify(minimalReplay);
+  const content = json + ' '.repeat(LIMITS.maxReplayFileBytes - Buffer.byteLength(json));
+  writeFileSync(join(cwd, 'boundary.json'), content);
+  const result = run(cwd, ['replay', 'boundary.json'], 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.matchesExpected, true);
+  assert.equal(report.chunkInvariant, true);
+  assert.equal(readFileSync(join(cwd, 'boundary.json'), 'utf8'), content);
+});
+
+test('CLI rejects a replay file one byte over its cap before parsing, including whitespace', t => {
+  const cwd = workspace(t);
+  const json = JSON.stringify(minimalReplay);
+  writeFileSync(join(cwd, 'oversized.json'), json + ' '.repeat(LIMITS.maxReplayFileBytes + 1 - Buffer.byteLength(json)));
+  const result = run(cwd, ['replay', 'oversized.json'], 2);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /replay file exceeds 1048576-byte limit/);
+  assert.deepEqual(readdirSync(cwd), ['oversized.json']);
+});
+
+test('CLI rejects a directory rather than treating it as replay data', t => {
+  const cwd = workspace(t);
+  const result = run(cwd, ['replay', '.'], 2);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /replay input must be a regular file|EISDIR/);
+  assert.deepEqual(readdirSync(cwd), []);
+});
+
+test('CLI accepts symlinks to regular replay files', { skip: process.platform === 'win32' }, t => {
+  const cwd = workspace(t);
+  writeFileSync(join(cwd, 'source.json'), JSON.stringify(minimalReplay));
+  symlinkSync('source.json', join(cwd, 'linked.json'));
+  const result = run(cwd, ['replay', 'linked.json'], 0);
+  assert.equal(JSON.parse(result.stdout).matchesExpected, true);
+  assert.deepEqual(readdirSync(cwd).sort(), ['linked.json', 'source.json']);
+});
+
+test('CLI rejects a POSIX FIFO without waiting for a writer', { skip: process.platform === 'win32' }, t => {
+  const cwd = workspace(t);
+  const created = spawnSync('mkfifo', [join(cwd, 'input.fifo')], { encoding: 'utf8', timeout: 10_000 });
+  if (created.error?.code === 'ENOENT') return t.skip('mkfifo is unavailable on this platform');
+  assert.ifError(created.error);
+  assert.equal(created.status, 0, created.stderr);
+  // run() has a subprocess deadline: a blocking open becomes a failed test,
+  // rather than hanging the suite. No writer is opened and no timing race is used.
+  const result = run(cwd, ['replay', 'input.fifo'], 2);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /replay input must be a regular file/);
+});
+
+for (const { changes, name, error } of [
+  { changes: { expected: [{ type: 'message', data: 1, lastEventId: '' }] }, name: 'invalid expected event fields', error: /expected events must contain exactly/ },
+  { changes: { expected: Array.from({ length: LIMITS.maxExpectedEvents + 1 }, () => ({ type: '', data: '', lastEventId: '' })) }, name: 'excess expected events', error: /expected exceeds 256-event limit/ },
+  { changes: { expected: [{ type: '', data: 'a'.repeat(LIMITS.maxExpectedTextBytes + 1), lastEventId: '' }] }, name: 'excess expected text', error: /expected text exceeds 65536-byte UTF-8 limit/ },
+  { changes: { bytesBase64: Buffer.alloc(LIMITS.maxBytes + 1).toString('base64') }, name: 'oversized decoded bytes', error: /bytes exceed 16384-byte limit/ },
+  { changes: { bytesBase64: 'YWJj', cuts: [2, 1] }, name: 'invalid cut order', error: /cuts must be sorted unique interior offsets/ },
+  { changes: { bytesBase64: 'YQ==\n' }, name: 'noncanonical base64', error: /invalid base64/ },
+]) {
+  test(`CLI rejects ${name} with a clear error and no regression output`, t => {
+    const cwd = workspace(t);
+    writeFileSync(join(cwd, 'invalid.json'), JSON.stringify({ ...minimalReplay, ...changes }));
+    const result = run(cwd, ['replay', 'invalid.json'], 2);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, error);
+    assert.deepEqual(readdirSync(cwd), ['invalid.json']);
   });
 }
