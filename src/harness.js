@@ -43,8 +43,7 @@ export function makeReplay(fixture, result, failedCase) {
   };
 }
 
-/** Artifacts carry data only: they never specify executable modules or code. */
-export async function replay(consumer, artifact) {
+function replayBytes(artifact) {
   if (artifact?.format !== 'streamsplit-replay' || artifact.version !== 1 || !Array.isArray(artifact.cuts) || !Array.isArray(artifact.expected) || typeof artifact.bytesBase64 !== 'string') {
     throw new TypeError('unsupported or malformed replay');
   }
@@ -56,7 +55,82 @@ export async function replay(consumer, artifact) {
   validateBytes(bytes);
   validateCuts(artifact.cuts, bytes.length);
   validateExpected(artifact.expected);
+  return bytes;
+}
+
+function assertions(actual, baseline, expected) {
+  return { actual, baseline, matchesExpected: isDeepStrictEqual(actual, { events: expected }), chunkInvariant: isDeepStrictEqual(actual, baseline) };
+}
+
+/** Artifacts carry data only: they never specify executable modules or code. */
+export async function replay(consumer, artifact) {
+  const bytes = replayBytes(artifact);
   const actual = await invoke(consumer, chunkBytes(bytes, artifact.cuts));
   const baseline = await invoke(consumer, [bytes.slice()]);
-  return { actual, baseline, matchesExpected: isDeepStrictEqual(actual, { events: artifact.expected }), chunkInvariant: isDeepStrictEqual(actual, baseline) };
+  return assertions(actual, baseline, artifact.expected);
+}
+
+/** Delete cuts, never bytes or expected events, with a bounded deterministic search.
+ * maxAttempts counts candidate invocations; original + baseline cost two more.
+ * A complete search is only single-cut minimal for the preserved failure, not
+ * globally minimal. Consumers must be deterministic and create fresh state.
+ */
+export async function reduceReplay(consumer, artifact, options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('reduction options must be an object');
+  const { maxAttempts = 128 } = options;
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 0) throw new RangeError('maxAttempts must be a nonnegative safe integer');
+  if (maxAttempts > LIMITS.maxReductionAttempts) throw new RangeError(`maxAttempts exceeds ${LIMITS.maxReductionAttempts} limit`);
+  const bytes = replayBytes(artifact);
+  // Snapshot validated data before awaiting any consumer. Optional diagnostics
+  // are not trusted, executed, or used to decide what failure to preserve.
+  // A JSON round-trip must not change assertion semantics. In particular,
+  // structuredClone alone normalizes null/custom prototypes, which could turn
+  // an existing expected-output failure into a pass before reduction begins.
+  const expected = [];
+  for (const event of artifact.expected) expected.push({ type: event.type, data: event.data, lastEventId: event.lastEventId });
+  if (!isDeepStrictEqual(expected, artifact.expected)) throw new TypeError('reduction expected events must be JSON-normalized plain records');
+  const input = {
+    format: 'streamsplit-replay', version: 1, bytesBase64: artifact.bytesBase64,
+    cuts: [...artifact.cuts], expected,
+  };
+  for (const key of ['fixture', 'partition']) if (typeof artifact[key] === 'string') input[key] = artifact[key];
+  const actual = await invoke(consumer, chunkBytes(bytes, input.cuts));
+  const baseline = await invoke(consumer, [bytes.slice()]);
+  const originalResult = assertions(actual, baseline, input.expected);
+  let cuts = [...input.cuts], reducedResult = originalResult, attempts = 0;
+  let status = originalResult.matchesExpected && originalResult.chunkInvariant ? 'not-failing' : 'complete';
+
+  const preservesFailure = candidate =>
+    candidate.matchesExpected === originalResult.matchesExpected &&
+    candidate.chunkInvariant === originalResult.chunkInvariant &&
+    // A new exception must not masquerade as the original event mismatch.
+    // For an original exception require its normalized name AND message.
+    isDeepStrictEqual(candidate.actual.error, originalResult.actual.error);
+
+  if (status !== 'not-failing') {
+    let index = 0;
+    while (index < cuts.length) {
+      if (attempts === maxAttempts) { status = 'budget-exhausted'; break; }
+      const candidateCuts = cuts.filter((_, i) => i !== index);
+      attempts++;
+      const candidate = assertions(await invoke(consumer, chunkBytes(bytes, candidateCuts)), baseline, input.expected);
+      if (preservesFailure(candidate)) {
+        cuts = candidateCuts;
+        reducedResult = candidate;
+        // A previously necessary cut may become removable after a later deletion.
+        index = 0;
+      } else index++;
+    }
+  }
+
+  const snapshot = (offsets, result, partition) => structuredClone({
+    ...input, cuts: offsets, ...(partition === undefined ? {} : { partition }),
+    observed: result.actual, baseline: result.baseline,
+  });
+  return {
+    original: snapshot(input.cuts, originalResult),
+    reduced: snapshot(cuts, reducedResult, 'reduced'),
+    originalResult: structuredClone(originalResult), reducedResult: structuredClone(reducedResult),
+    attempts, status,
+  };
 }

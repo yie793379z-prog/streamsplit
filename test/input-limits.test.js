@@ -22,6 +22,7 @@ test('published limits are immutable and available from the package entry point'
     maxBytes: 16_384, maxRandomCases: 256, maxPartitions: 512,
     maxExpectedEvents: 256, maxExpectedTextBytes: 65_536,
     maxNameBytes: 256, maxReplayFileBytes: 1_048_576,
+    maxReductionAttempts: 256,
   });
 });
 

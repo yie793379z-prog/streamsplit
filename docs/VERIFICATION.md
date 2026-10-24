@@ -1,6 +1,8 @@
 # Verification
 
-Verified locally on 2026-10-23 on Linux x64 using Node.js v22.23.3 and v24.19.0: **69 core tests and 26 optional integration tests pass on each runtime**, with no skipped tests. This input-bounds increment is based on main `01ab58c626f6f9d3df949e9487576f148bcb1af0`; its final published commit requires separate hosted CI verification.
+Verified locally on 2026-10-24 on Linux x64 using Node.js v22.23.3 and v24.22.1: **93 core tests and 26 optional integration tests pass on each runtime**, with no skipped tests. This cut-reduction increment is based on main `791b60119cafc66c5b0e49116db55531b59fbfed`; its final published commit requires separate hosted CI verification. The Node 22 Linux archive came from the official distribution and matched its published SHA-256 checksum.
+
+Historical input-bounds verification on 2026-10-23 passed the then-current 69 core and 26 optional tests on Linux x64 with Node v22.23.3 and v24.19.0. Those results are not a rerun of this cut-reduction revision.
 
 Historical adapter verification on 2026-10-22 passed the then-current 40 core tests and 26 adapter tests on macOS arm64 with Node v22.12.0 (the optional parser's minimum) and v24.14.1. That Node 22 archive came from the official distribution and matched its published SHA-256 checksum. Those macOS results are not a rerun of this input-bounds revision.
 
@@ -12,11 +14,13 @@ npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fun
 
 | Command | Result | Expected exit |
 | --- | --- | --- |
-| `node --test` | 69 tests passed, 0 failed | 0 |
+| `node --test` | 93 tests passed, 0 failed | 0 |
 | `npm test --prefix examples/eventsource-parser` | 26 integration tests passed, 0 failed | 0 |
 | `node examples/eventsource-parser/demo.js` | 20 fixtures, 1183 partitions, 0 failures; broken UTF-8 replay passes with real parser | 0 |
 | `node examples/utf8-demo.js` | Reproduces UTF-8 corruption at byte 7, then verifies fixed replay; no files written | 0 |
 | `node examples/limits-demo.js` | Exact byte limit accepted, oversized bytes/excess partitions rejected before consumers; v1 replay passes; no files written | 0 |
+| `node examples/reduce-demo.js` | 6 cuts reduce to 1 in 9 attempts with identical bytes/expected; both v1 artifacts replay; budget exhaustion retains failure; no files written | 0 |
+| `node --test test/reduction.test.js` | 22 cut-reduction tests passed, 0 failed | 0 |
 | `node --test test/cli.test.js` | 21 CLI integration tests passed, 0 failed | 0 |
 | `node src/cli.js check` | 803 partitions, 0 failures, 15 fixtures | 0 |
 | `node src/cli.js check --broken` | 803 partitions, 66 intentional failures | 1 |
@@ -33,11 +37,25 @@ The two first-run checks run `examples/utf8-demo.js` as a real child process, as
 
 The first-run increment exercised its complete clone/change-directory/demo quickstart and the documented test, check, and replay commands from a fresh checkout. The intentional failures were checked for exit code `1`, not ignored; those CLI and replay checks remain in the core suite.
 
+## Deterministic bounded cut reduction
+
+The opt-in `reduceReplay` API is covered by 22 new tests. Fixed left-to-right single-cut deletion restarts after every accepted deletion. Tests assert the exact candidate order, repeatable reports for deterministic adapters, the necessity of restarting, and a deliberately nonmonotonic example that is single-cut minimal but not globally minimal. The existing CLI commands remain unchanged.
+
+Budget tests cover default 128 and hard cap 256 candidate invocations, the exact cap and one above, zero budget, invalid options before any consumer execution, exhaustion after a successful reduction, and completion on the final budget unit. Two setup calls verify original output and baseline; every candidate attempt, accepted or rejected, consumes one unit. Empty/one-byte inputs with no cuts are complete without candidate attempts. Good consumers return `not-failing` without candidate calls; consistently wrong but invariant consumers may reduce to zero cuts.
+
+The preservation predicate keeps both original assertion booleans, including an originally successful assertion. Event-output failures cannot be replaced by exceptions/malformed output; exceptions must preserve normalized name and message. Tests cover two failed assertions, either individual assertion, unrelated errors, error-to-event changes, and async consumers. The predicate does not prove an identical root cause or exact wrong event text, and assumes deterministic fresh-state adapters.
+
+Both returned artifacts remain independently JSON-round-trippable version-1 data; they reproduce the broken UTF-8 failure and pass with the good consumer. Tests verify byte/expected equality, copied cuts, ignored forged diagnostics, independent snapshots, consumer chunk mutations, and caller mutations before an async consumer resolves. Existing replay validation and bounds also run before reduction setup calls. A reducer-only normalized expected-event snapshot check rejects custom/null-prototype records, record symbols, custom array prototypes, and named array properties before any consumer invocation. Without this check, snapshot/JSON normalization could silently change an expected-event failure into a pass; regression tests demonstrate the prior replay semantics and explicit caller-side JSON normalization. Existing `replay` acceptance is unchanged. No new replay version, executable adapter paths, dependencies, workflow permissions, or automatic CLI reduction were introduced.
+
+Two new demo/documentation checks run `examples/reduce-demo.js` in an isolated temporary directory, assert exact output and no writes, and keep both README language blocks synchronized. The demo reduces `[1,6,7,12,23,24]` to `[7]` in nine attempts, preserves all 25 bytes and expected events, replays both artifacts through broken/fixed consumers, and verifies that a two-attempt budget returns a still-failing four-cut artifact with `budget-exhausted`. The 66 API/library, 21 CLI, and six demo/documentation checks total **93 core tests**. Original good/broken and real-adapter totals remain **803/0**, **803/66**, and **1183/0**.
+
+This is a bounded search, not a timeout, sandbox, byte minimizer, or globally optimal reducer. Consumer work/output, getters/proxies, and nondeterministic/stateful adapters remain trusted/out of scope. `complete` asserts only that no single remaining cut can be deleted while preserving this predicate; `budget-exhausted` makes no minimality claim and returns the last verified candidate.
+
 ## Input bounds and version-1 compatibility
 
-The 16 new API tests cover the fixed byte/random/partition/event/text/name budgets at their exact boundaries and one step above, with a zero-call consumer spy for invalid requests. They also cover malformed options/fixtures/expected records (including sparse arrays), canonical base64, invalid cut types/counts/order/offsets, immutable exported limits, empty/Buffer-backed inputs, and `makeReplay` validation. The total library count is now 44. Candidate counts are checked before deduplication and cut allocation; duplicate output partitions do not exempt work from the budget.
+The 16 input-boundary API tests cover the fixed byte/random/partition/event/text/name budgets at their exact boundaries and one step above, with a zero-call consumer spy for invalid requests. They also cover malformed options/fixtures/expected records (including sparse arrays), canonical base64, invalid cut types/counts/order/offsets, immutable exported limits, empty/Buffer-backed inputs, and `makeReplay` validation. The library count at that milestone was 44; cut reduction adds 22 more. Candidate counts are checked before deduplication and cut allocation; duplicate output partitions do not exempt work from the budget.
 
-Two new demonstration/documentation tests execute `examples/limits-demo.js`, verify exact output, assert no file writes, and keep its English/Chinese README blocks synchronized. The four demo checks plus 44 API/library and 21 CLI checks make 69 core tests. Original good/broken totals remain **803/0** and **803/66**; the real adapter remains **1183/0**.
+Two input-bounds demonstration/documentation tests execute `examples/limits-demo.js`, verify exact output, assert no file writes, and keep its English/Chinese README blocks synchronized. The four demo checks plus 44 API/library and 21 CLI checks made 69 core tests before cut reduction. Original good/broken totals remain **803/0** and **803/66**; the real adapter remains **1183/0**.
 
 Version 1 is unchanged. Old normalized artifacts within the new limits still pass with the fixed consumer and reproduce the known broken decoder. Minimal artifacts without `fixture`, `partition`, `observed`, or `baseline` are explicitly accepted; saved diagnostics are ignored and baseline is recomputed. Previously accepted non-normalized expected records and oversized inputs now reject intentionally. This is not a guarantee that every formerly accepted arbitrary JavaScript object will remain accepted.
 
@@ -68,8 +86,8 @@ The workflow requests only `contents: read`, disables persisted checkout credent
 
 These actions are CI-tooling dependencies only; root `package.json` still has no runtime or development dependencies. The optional example has one separately locked MIT dependency. The original code remains MIT licensed. This review is not a full audit of the actions' transitive dependencies.
 
-Hosted run [39602457939](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939) succeeded for the 40-test baseline [`542abf45e4cc2056879a8ddc451a853954ba1c31`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24. This was rechecked before the adapter changes; the prior CI gap is resolved. It is not hosted evidence for the current input-bounds revision. After publication, check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the exact commit and both jobs before claiming its hosted verification.
+Hosted run [39602457939](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939) succeeded for the 40-test baseline [`542abf45e4cc2056879a8ddc451a853954ba1c31`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24. This was rechecked before the adapter changes; the prior CI gap is resolved. It is not hosted evidence for the current cut-reduction revision. After publication, check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the exact commit and both jobs before claiming its hosted verification.
 
 Not run locally for this increment: other Node versions or operating systems, browsers, HTTP/reconnection/retry-state/timing checks, external lint/type checking, or package publication. The adapter validates final events; it does not establish full SSE conformance or memory bounds. Hosted CI for this exact revision must be checked after publication.
 
-中文摘要：本次在 Linux x64 的 Node 22.23.3 和 24.19.0 上验证 69 项核心测试、26 项可选适配测试，均无跳过。新增固定输入/候选预算、零消费者调用的拒绝验证、CLI 1 MiB 文件边界，以及双语可复现演示；旧版 v1 合规重放保持兼容。先前 macOS 的测试结果仅为历史记录。第三方解析器固定为 4.1.2，20 个合成夹具的 1183 次分块检查通过，并验证两种负对照及旧版 JSON 重放。核心仍无依赖，只有可选示例首次安装需要联网。MIT 许可、锁文件和无运行时传递依赖已检查；远端 CI 必须按发布后的精确提交另行确认，不能拿旧版本的成功记录代替。
+中文摘要：本次在 Linux x64 的 Node 22.23.3 和 24.22.1 上验证 93 项核心测试、26 项可选适配测试，均无跳过。新增有上限的确定性 cut 缩减 API、22 项边界/失败保持测试及双语自检演示；不修改 bytes/expected，不将无关异常当作保留，原始与缩减数据均保持 v1 重放兼容。只保证单 cut 局部最小，不保证全局最小或超时。此前的输入边界和 803/1183 次检查结果不变。先前 macOS 的测试结果仅为历史记录。第三方解析器固定为 4.1.2，20 个合成夹具的 1183 次分块检查通过，并验证两种负对照及旧版 JSON 重放。核心仍无依赖，只有可选示例首次安装需要联网。MIT 许可、锁文件和无运行时传递依赖已检查；远端 CI 必须按发布后的精确提交另行确认，不能拿旧版本的成功记录代替。

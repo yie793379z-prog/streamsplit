@@ -110,7 +110,7 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 69 dependency-free core tests; CI runs both suites.
+Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 93 dependency-free core tests; CI runs both suites.
 
 Each partition is checked against two independent expectations:
 
@@ -144,6 +144,7 @@ The harness is for small, trusted local regression fixtures, not large captures.
 | Combined UTF-8 bytes in expected `type`, `data`, `lastEventId` strings | 65,536 bytes (64 KiB) |
 | Fixture name, nonempty string | 256 UTF-8 bytes |
 | Replay JSON file read by the CLI, including whitespace/diagnostics | 1,048,576 bytes (1 MiB) |
+| Cut-reduction candidate attempts (`maxAttempts`, default 128) | 256 (+2 setup consumer calls) |
 
 Fixtures must supply a `Uint8Array` (including `Buffer`) and an expected array of records containing **exactly** the three own string fields `{ type, data, lastEventId }`. Sparse arrays, coercible byte arrays/strings, malformed records, noncanonical base64, and unsorted, repeated, fractional, or non-interior cuts are rejected. Empty bytes and empty expected arrays remain valid. Replay offsets must be an array of sorted unique interior byte positions; their count cannot exceed `max(0, byteLength - 1)`.
 
@@ -164,17 +165,54 @@ REJECT: partition candidates exceed 512 limit; lower randomCases or singleSplitL
 PASS: version-1 replay remains compatible
 ```
 
+## Reduce a failing cut list
+
+`reduceReplay(consumer, artifact, { maxAttempts: 128 })` accepts an existing version-1 replay and returns **separate `original` and `reduced` version-1 artifacts**, plus `originalResult`, `reducedResult`, `attempts`, and `status`. The result objects have the same assertion fields as `replay`. Save the two artifacts separately with `JSON.stringify`; either can be passed to the existing `replay` API or CLI. This is an opt-in library API; `check` and `replay` CLI behavior is unchanged.
+
+```js
+import { reduceReplay } from './src/harness.js';
+
+// consumer is your fresh-state adapter; artifact is an existing v1 replay.
+const reduction = await reduceReplay(consumer, artifact, { maxAttempts: 128 });
+console.log(reduction.original.cuts, reduction.reduced.cuts);
+console.log(reduction.status, reduction.attempts);
+```
+
+The reducer tries deleting one cut at a time, left to right, restarting from the left after each accepted deletion. It never edits bytes or expected events, and only accepts a candidate with **the same two assertion booleans** as the original. An event mismatch cannot turn into an exception; an original exception must retain its normalized error name and message. This preserves the failure category, not necessarily the precise wrong event text or the underlying root cause. Saved observations are ignored: original output and its unsplit baseline are recomputed once, then every candidate is compared with that fixed baseline.
+
+- `complete`: no remaining single-cut deletion preserves this failure (or no cuts remain). This is **local single-cut minimality**, not a globally smallest cut set or byte minimization.
+- `budget-exhausted`: the budget stopped the search; `reduced` is the last verified failure, possibly unchanged. No minimality claim is made.
+- `not-failing`: both original checks pass, so no candidate is tried and the cuts are unchanged.
+
+`maxAttempts` must be a nonnegative safe integer, defaults to 128, and cannot exceed `LIMITS.maxReductionAttempts` (256). `attempts` counts candidate calls only; two additional calls verify the original and baseline, even with a zero budget. Invalid options/replays reject before any consumer call. For identical inputs and deterministic, fresh-state consumers, results and attempt order are repeatable. Nondeterministic/stateful consumers, arbitrary consumer runtime/output, and getters/proxies remain outside these guarantees; a call budget is not a timeout or sandbox.
+
+Reducer inputs must have JSON-normalized expected events: a plain array of plain three-string-field records, with no extra enumerable properties (including symbol keys) or custom/null prototypes. Inputs that would change under normalization reject before any consumer call, rather than silently changing the original failure. This reducer-only requirement does not change what the existing `replay` API accepts.
+
+Returned artifacts and results are independent snapshots. Only the original bytes, cuts, expected events, optional string `fixture`/`partition` labels, and freshly computed diagnostics are retained; the reduced partition label is `reduced`. Arbitrary extra metadata is not copied. All existing replay limits and privacy cautions still apply. A consistently wrong but chunk-invariant consumer can legitimately reduce to zero cuts while still failing the expected-event assertion.
+
+Run `node examples/reduce-demo.js` (or `npm run demo:reduce`). This self-checking demo writes no files and verifies both JSON-round-tripped artifacts with the broken and fixed consumers:
+
+<!-- reduce-demo-output -->
+```text
+StreamSplit: fewer cuts, same failure
+Original cuts: [1,6,7,12,23,24]
+Reduced cuts: [7] (9 attempts; complete)
+Unchanged: 25 bytes and expected events
+PASS: both version-1 artifacts fail with broken decoder and pass with streaming decoder
+Budget 2: 4 cuts remain; budget-exhausted; original failure preserved
+```
+
 ## Honest boundaries
 
 - The good example uses streaming UTF-8 decoding but buffers decoded text before parsing. It validates final event results, not delivery timing or bounded-memory streaming.
 - Retry fields have no event output; retry state, reconnects, HTTP, cancellation, and backpressure are out of scope.
 - Empty input is covered. The optional adapter tests inject empty chunks; the core generator does not yet include them or huge fixtures.
-- There is one pinned external parser example; browser validation, shrinking, benchmarks, package publication, and complete standards compliance remain out of scope.
+- There is one pinned external parser example; browser validation, byte/content shrinking, globally minimal failures, benchmarks, package publication, and complete standards compliance remain out of scope.
 - JavaScript ESM and JSDoc run directly without a TypeScript compiler. See the [verification record](docs/VERIFICATION.md) for tested runtimes and platforms.
 
 ## Verification
 
-The core has 69 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, and four demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay.
+The core has 93 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, 22 cut-reduction checks, and six demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay.
 
 Hosted CI passed the 40-test baseline [`542abf4`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939)). The [CI workflow](.github/workflows/ci.yml) now runs core and optional adapter suites for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
@@ -263,7 +301,29 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 69 项核心测试；CI 会分别执行两套测试。依赖采用 MIT 许可，无运行时传递依赖。
+预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 93 项核心测试；CI 会分别执行两套测试。依赖采用 MIT 许可，无运行时传递依赖。
+
+### 缩减失败切分
+
+新增可选库 API `reduceReplay(consumer, artifact, { maxAttempts: 128 })`：固定从左到右尝试删除单个 cut，成功后从左重扫；**不修改字节或预期事件**，保留原来的两项断言布尔值。事件不匹配不能被无关异常替代；原本为异常时必须保留错误名称和消息。它保留失败类别，不保证错误文本或根因完全一致。
+
+返回独立的 `original`、`reduced` **v1 重放数据**，以及 `originalResult`、`reducedResult`、`attempts`、`status`。两个工件均可分别 JSON 序列化，再用原有 API/CLI 重放；不会覆盖输入。忽略旧观察结果并重算原始结果/基线，保留可选字符串标签，不复制任意额外元数据。CLI 默认流程不变。
+
+缩减器仅接受 JSON 规范化的预期事件：普通数组和仅含三字符串字段的普通对象，不含额外可枚举属性（含符号键）或自定义/null 原型。若复制规范化会改变原有比较语义，则在消费者调用前明确拒绝；原有 `replay` 接受规则不变。
+
+候选预算默认 128、硬上限 256，另有两次原始/基线调用；零预算合法，非法输入在消费者调用前拒绝。`complete` 仅表示不能再删除单个 cut，**不保证全局最小**；`budget-exhausted` 返回已验证的最后失败，不声称最小；`not-failing` 表示原始两项检查通过，未尝试缩减。确定性依赖每次重新创建状态的确定性消费者；调用预算不是超时或沙箱。
+
+运行 `node examples/reduce-demo.js`（或 `npm run demo:reduce`），无文件写入，自动断言双工件的好/坏消费者重放及预算耗尽：
+
+<!-- reduce-demo-output -->
+```text
+StreamSplit: fewer cuts, same failure
+Original cuts: [1,6,7,12,23,24]
+Reduced cuts: [7] (9 attempts; complete)
+Unchanged: 25 bytes and expected events
+PASS: both version-1 artifacts fail with broken decoder and pass with streaming decoder
+Budget 2: 4 cuts remain; budget-exhausted; original failure preserved
+```
 
 ## Useful to you?
 

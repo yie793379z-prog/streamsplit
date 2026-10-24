@@ -9,4 +9,5 @@ export const LIMITS = Object.freeze({
   maxExpectedTextBytes: 64 * 1024,
   maxNameBytes: 256,
   maxReplayFileBytes: 1024 * 1024,
+  maxReductionAttempts: 256,
 });
