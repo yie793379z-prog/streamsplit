@@ -40,3 +40,7 @@ jobs:
         run: npm ci --prefix examples/eventsource-parser --ignore-scripts --no-audit --no-fund
       - name: Run real parser adapter regression tests
         run: npm test --prefix examples/eventsource-parser
+      - name: Install pinned historical parser comparison (no lifecycle scripts)
+        run: npm ci --prefix examples/eventsource-parser-bom-history --ignore-scripts --no-audit --no-fund
+      - name: Run historical BOM red/green regression tests
+        run: npm test --prefix examples/eventsource-parser-bom-history

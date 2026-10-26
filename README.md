@@ -110,7 +110,19 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 93 dependency-free core tests; CI runs both suites.
+Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 93 dependency-free core tests; CI runs the core and both optional suites.
+
+### Replay an already-fixed upstream bug
+
+The optional [historical BOM example](examples/eventsource-parser-bom-history/README.md) compares real, separately locked **eventsource-parser 4.1.0 and 4.1.2** using the same adapter. An original 11-byte fixture produces **3 failures in 12 partitions** on 4.1.0 and **0** on 4.1.2; cut reduction changes `[1,3,5,8,10]` to `[1]`, and both v1 artifacts replay red/green. The first fix was **4.1.1** ([upstream PR #41](https://github.com/rexxars/eventsource-parser/pull/41)); this is a historical demonstration, not a current upstream bug claim. The existing 4.1.2 adapter stays pinned.
+
+```sh
+npm ci --prefix examples/eventsource-parser-bom-history --ignore-scripts --no-audit --no-fund
+npm test --prefix examples/eventsource-parser-bom-history
+node examples/eventsource-parser-bom-history/demo.js
+```
+
+Requires Node ≥22.12. Expected: **12 additional tests pass**; the self-checking demo exits `0` only when the historical failure and fixed result are both verified, and writes no files. See the linked bilingual guide for exact output, source attribution, and dependency/license details. Core tests still need no installation.
 
 Each partition is checked against two independent expectations:
 
@@ -207,12 +219,12 @@ Budget 2: 4 cuts remain; budget-exhausted; original failure preserved
 - The good example uses streaming UTF-8 decoding but buffers decoded text before parsing. It validates final event results, not delivery timing or bounded-memory streaming.
 - Retry fields have no event output; retry state, reconnects, HTTP, cancellation, and backpressure are out of scope.
 - Empty input is covered. The optional adapter tests inject empty chunks; the core generator does not yet include them or huge fixtures.
-- There is one pinned external parser example; browser validation, byte/content shrinking, globally minimal failures, benchmarks, package publication, and complete standards compliance remain out of scope.
+- There is one current pinned external parser adapter and a separate historical version comparison; browser validation, byte/content shrinking, globally minimal failures, benchmarks, package publication, and complete standards compliance remain out of scope.
 - JavaScript ESM and JSDoc run directly without a TypeScript compiler. See the [verification record](docs/VERIFICATION.md) for tested runtimes and platforms.
 
 ## Verification
 
-The core has 93 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, 22 cut-reduction checks, and six demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay.
+The core has 93 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, 22 cut-reduction checks, and six demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay. The separate historical BOM comparison adds 12 tests and verifies the expected 12/3 (4.1.0) versus 12/0 (4.1.2) partition results; those historical failures are required for its tests to pass.
 
 Hosted CI passed the 40-test baseline [`542abf4`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939)). The [CI workflow](.github/workflows/ci.yml) now runs core and optional adapter suites for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
@@ -301,7 +313,19 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 93 项核心测试；CI 会分别执行两套测试。依赖采用 MIT 许可，无运行时传递依赖。
+预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 93 项核心测试；CI 分别执行核心及两个可选示例的测试。依赖采用 MIT 许可，无运行时传递依赖。
+
+### 复现已修复的上游历史缺陷
+
+独立可选的[历史 BOM 示例](examples/eventsource-parser-bom-history/README.md)通过相同适配逻辑，对比真实且分别锁定的 **eventsource-parser 4.1.0 / 4.1.2**。自写 11 字节夹具在 12 种确定分区中，旧版 3 次失败、新版 0 次失败；`[1,3,5,8,10]` 经缩减得到 `[1]`，原始与缩减 v1 数据均验证红绿重放。首次修复版本是 **4.1.1**（[PR #41](https://github.com/rexxars/eventsource-parser/pull/41)），不是宣称当前上游仍有缺陷，也没有降级现有 4.1.2 适配器。
+
+```sh
+npm ci --prefix examples/eventsource-parser-bom-history --ignore-scripts --no-audit --no-fund
+npm test --prefix examples/eventsource-parser-bom-history
+node examples/eventsource-parser-bom-history/demo.js
+```
+
+需要 Node ≥22.12，预期新增的 **12 项独立测试通过**。演示仅在旧版失败和新版通过均被断言后退出 `0`，不写文件；首次安装联网，之后离线。精确输出、历史来源及许可说明见链接中的双语指南。根目录 93 项核心测试仍无需安装依赖。
 
 ### 缩减失败切分
 

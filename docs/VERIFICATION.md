@@ -1,6 +1,42 @@
 # Verification
 
-Verified locally on 2026-10-24 on Linux x64 using Node.js v22.23.3 and v24.22.1: **93 core tests and 26 optional integration tests pass on each runtime**, with no skipped tests. This cut-reduction increment is based on main `791b60119cafc66c5b0e49116db55531b59fbfed`; its final published commit requires separate hosted CI verification. The Node 22 Linux archive came from the official distribution and matched its published SHA-256 checksum.
+## Historical BOM example: 2026-10-26
+
+Verified locally on **macOS arm64, Node.js v24.14.1, npm 11.11.0**: **93 core + 26 existing adapter + 12 historical BOM tests pass**, with no skipped tests. This increment is based on main `dd79470db07fa066d920e83934012ece254c5793`. It adds an isolated optional comparison of real `eventsource-parser` 4.1.0 and 4.1.2; the current 4.1.2 adapter, root dependencies, CLI, public exports, and version-1 replay format are unchanged. The adapter README's stale 69-core-test count was corrected to 93 in both languages.
+
+| Command | Observed result | Exit |
+| --- | --- | --- |
+| `node --test` | 93 passed; 0 failed/skipped | 0 |
+| `npm test --prefix examples/eventsource-parser` | 26 passed; 0 failed/skipped | 0 |
+| `npm test --prefix examples/eventsource-parser-bom-history` | 12 passed; 0 failed/skipped | 0 |
+| `node examples/eventsource-parser-bom-history/demo.js` | 12 partitions per version; old 3 failures, fixed 0; `[1,3,5,8,10]` reduces to `[1]` in 9 attempts; both v1 artifacts replay red/green | 0 |
+| `node examples/eventsource-parser/demo.js` | 20 fixtures; 1183 partitions; 0 failures; UTF-8 replay passes | 0 |
+| `node examples/utf8-demo.js` | Broken and fixed UTF-8 outputs asserted | 0 |
+| `node examples/limits-demo.js` | Exact bounds, pre-consumer rejection and v1 compatibility asserted | 0 |
+| `node examples/reduce-demo.js` | Original reducer demonstration and budget exhaustion asserted | 0 |
+| `node src/cli.js check` | 803 partitions; 0 failures | 0 |
+
+Both optional packages were installed from their lockfiles using `npm ci --ignore-scripts --no-audit --no-fund`. For the historical example, reproduce from the root with:
+
+```sh
+npm ci --prefix examples/eventsource-parser-bom-history --ignore-scripts --no-audit --no-fund
+npm test --prefix examples/eventsource-parser-bom-history
+node examples/eventsource-parser-bom-history/demo.js
+```
+
+The [historical guide](../examples/eventsource-parser-bom-history/README.md) documents exact output in English and Chinese. Its 11-byte fixture (`efbbbf646174613a780a0a`) and expected event are original synthetic data. Both versions use one shared adapter, preserving the BOM and feeding empty decoded strings. Unsplit succeeds on both; only `single:1`, `single:2`, and `bytewise` fail on 4.1.0. These failures are asserted as the expected historical red result, so a fully verified demo exits 0. It is not a report of a current upstream defect: [PR #41](https://github.com/rexxars/eventsource-parser/pull/41) and the [changelog](https://github.com/rexxars/eventsource-parser/blob/v4.1.2/CHANGELOG.md#411) place the first fix in **4.1.1**, with 4.1.2 containing it.
+
+The 12 tests verify installed versions and lock entries, the literal fixture/oracle, each split BOM byte through JSON v1 replay, all 12 deterministic partitions, no-BOM and explicit empty-chunk controls, fresh invocation state, cut reduction with unchanged bytes/expected events, both versions on both returned artifacts, the last cut's necessity, the fixed parser's `not-failing` result, subprocess exit/exact output/no writes, and both language blocks. Random partitions are disabled for this tiny matrix; it is not exhaustive over cut combinations. Reduction retains the existing local single-cut guarantee, not global or byte minimality. Existing CLI tests still verify intentional failure exit 1 and invalid-input exit 2.
+
+Dependency/license review: exact npm aliases isolate 4.1.0 and 4.1.2 in this private example, with public registry URLs and SHA-512 integrity in its lockfile. Installed manifests and license files confirm both are MIT licensed and have no runtime dependencies. No upstream tests/source or personal/private captures were copied into tracked files; distribution source/license files remain in ignored installations. Retain upstream notices if redistributing those packages. This is a scoped license/manifest and changed-file review, not a full security audit.
+
+CI now explicitly installs and runs the historical suite in the existing Node 22/24 matrix. Action pins, read-only workflow permissions, and disabled checkout credential persistence are unchanged. The **baseline** `dd79470` has a successful [hosted run on both Node versions](https://github.com/yie793379z-prog/streamsplit/actions/runs/40076076634); that is not hosted verification of this new increment. **Node 22, Linux, browsers, and hosted CI were not run for this increment.** No new Node runtime was installed locally. Verify the final exact published revision in CI before claiming Node 22 support was exercised for this change.
+
+中文：2026-10-26 在 macOS arm64、Node 24.14.1 / npm 11.11.0 上实测 93 项核心、26 项原适配器、12 项历史 BOM 测试，全通过且无跳过。新增独立锁定的 4.1.0 / 4.1.2 比较，共用适配器、自写 11 字节夹具和预期事件，确定矩阵旧版 12/3、新版 12/0；9 次尝试将 5 个切点缩为 `[1]`，原始与缩减 v1 数据均完成红绿重放。首次修复是 4.1.1，不声称当前上游仍有缺陷。两版安装包的 MIT 许可、无运行时传递依赖及完整性锁已核验。核心、现有适配器实现、CLI 和协议未变；修正旧适配器双语 README 的 69→93 计数。所有演示及既有 803/0、1183/0 检查通过。此次未运行 Node 22、Linux 或新提交的远端 CI；既有基线 CI 成功不能替代新提交验证。
+
+## Earlier verification records
+
+Verified locally on 2026-10-24 on Linux x64 using Node.js v22.23.3 and v24.22.1: **93 core tests and 26 optional integration tests pass on each runtime**, with no skipped tests. That cut-reduction increment was based on main `791b60119cafc66c5b0e49116db55531b59fbfed`. The Node 22 Linux archive came from the official distribution and matched its published SHA-256 checksum.
 
 Historical input-bounds verification on 2026-10-23 passed the then-current 69 core and 26 optional tests on Linux x64 with Node v22.23.3 and v24.19.0. Those results are not a rerun of this cut-reduction revision.
 
@@ -65,7 +101,7 @@ No new third-party dependencies or workflow permissions were added. The existing
 
 ## Optional real parser integration
 
-The [adapter](../examples/eventsource-parser/consumer.js) uses the actual npm distribution of `eventsource-parser` **4.1.2**, not a substitute parser. Its own package and lockfile leave the root dependency-free. The 26 integration tests run explicitly through the example's npm script; they are intentionally outside the root `node --test` discovery pattern so a fresh clone can still run all core checks without npm installation. CI explicitly runs both suites; missing optional dependencies fail that job, rather than silently skipping tests.
+The [adapter](../examples/eventsource-parser/consumer.js) uses the actual npm distribution of `eventsource-parser` **4.1.2**, not a substitute parser. Its own package and lockfile leave the root dependency-free. The 26 integration tests run explicitly through the example's npm script; they are intentionally outside the root `node --test` discovery pattern so a fresh clone can still run all core checks without npm installation. CI explicitly runs the core and both optional suites; missing optional dependencies fail that job, rather than silently skipping tests.
 
 Coverage: all 15 shared fixtures plus five original synthetic cases for ID-only retention/reset/NUL rejection, multiple IDs, mixed line endings, partial EOF after a complete event, and stripping only one leading BOM. At seed `20261018`, these produce **1183** partition checks (803 shared + 380 additional). Empty chunks around every byte are also tested for every fixture. Invocation isolation, exact subprocess demo output, no file writes, and both language versions of the expected output are asserted.
 
@@ -77,17 +113,17 @@ The new fixtures contain only synthetic text. Publication review checks the stag
 
 ## Continuous integration
 
-The [workflow](../.github/workflows/ci.yml) runs `node --test`, installs the optional example with `npm ci --ignore-scripts --no-audit --no-fund`, and runs its 26 integration tests on Node 22 and 24 for pushes to `main`, pull requests, and manual dispatches. Each job has a five-minute timeout. No dependency cache, publishing step, or artifact upload is used. The installation requires access to the public npm registry; test execution itself does not require network access.
+The [workflow](../.github/workflows/ci.yml) runs `node --test`, installs each optional example with `npm ci --ignore-scripts --no-audit --no-fund`, and separately runs the 26 adapter tests and 12 historical BOM tests on Node 22 and 24 for pushes to `main`, pull requests, and manual dispatches. Each job has a five-minute timeout. No dependency cache, publishing step, or artifact upload is used. The installation requires access to the public npm registry; test execution itself does not require network access.
 
 The workflow requests only `contents: read`, disables persisted checkout credentials, uses `pull_request` rather than `pull_request_target`, and pins the official actions to verified release commits:
 
 - [actions/checkout v7.0.1](https://github.com/actions/checkout/tree/3d3c42e5aac5ba805825da76410c181273ba90b1), [MIT license](https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/LICENSE)
 - [actions/setup-node v7.1.0](https://github.com/actions/setup-node/tree/949feb2413d6458794dcd2491c4babbbce0c15c1), [MIT license](https://github.com/actions/setup-node/blob/949feb2413d6458794dcd2491c4babbbce0c15c1/LICENSE)
 
-These actions are CI-tooling dependencies only; root `package.json` still has no runtime or development dependencies. The optional example has one separately locked MIT dependency. The original code remains MIT licensed. This review is not a full audit of the actions' transitive dependencies.
+These actions are CI-tooling dependencies only; root `package.json` still has no runtime or development dependencies. The current adapter has one separately locked MIT dependency; the historical example separately locks two aliases of the same MIT package. The original code remains MIT licensed. This review is not a full audit of the actions' transitive dependencies.
 
 Hosted run [39602457939](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939) succeeded for the 40-test baseline [`542abf45e4cc2056879a8ddc451a853954ba1c31`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24. This was rechecked before the adapter changes; the prior CI gap is resolved. It is not hosted evidence for the current cut-reduction revision. After publication, check [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the exact commit and both jobs before claiming its hosted verification.
 
-Not run locally for this increment: other Node versions or operating systems, browsers, HTTP/reconnection/retry-state/timing checks, external lint/type checking, or package publication. The adapter validates final events; it does not establish full SSE conformance or memory bounds. Hosted CI for this exact revision must be checked after publication.
+Not run locally for the 2026-10-24 increment: other Node versions or operating systems, browsers, HTTP/reconnection/retry-state/timing checks, external lint/type checking, or package publication. The adapter validates final events; it does not establish full SSE conformance or memory bounds. See the current verification section above for the new increment's runtime and hosted-CI limits.
 
-中文摘要：本次在 Linux x64 的 Node 22.23.3 和 24.22.1 上验证 93 项核心测试、26 项可选适配测试，均无跳过。新增有上限的确定性 cut 缩减 API、22 项边界/失败保持测试及双语自检演示；不修改 bytes/expected，不将无关异常当作保留，原始与缩减数据均保持 v1 重放兼容。只保证单 cut 局部最小，不保证全局最小或超时。此前的输入边界和 803/1183 次检查结果不变。先前 macOS 的测试结果仅为历史记录。第三方解析器固定为 4.1.2，20 个合成夹具的 1183 次分块检查通过，并验证两种负对照及旧版 JSON 重放。核心仍无依赖，只有可选示例首次安装需要联网。MIT 许可、锁文件和无运行时传递依赖已检查；远端 CI 必须按发布后的精确提交另行确认，不能拿旧版本的成功记录代替。
+历史中文摘要（2026-10-24）：当时在 Linux x64 的 Node 22.23.3 和 24.22.1 上验证 93 项核心测试、26 项可选适配测试，均无跳过。新增有上限的确定性 cut 缩减 API、22 项边界/失败保持测试及双语自检演示；不修改 bytes/expected，不将无关异常当作保留，原始与缩减数据均保持 v1 重放兼容。只保证单 cut 局部最小，不保证全局最小或超时。此前的输入边界和 803/1183 次检查结果不变。第三方解析器固定为 4.1.2，20 个合成夹具的 1183 次分块检查通过，并验证两种负对照及旧版 JSON 重放。核心仍无依赖，只有可选示例首次安装需要联网。MIT 许可、锁文件和无运行时传递依赖已检查。新迭代的本机及远端验证状态以本文开头为准。
