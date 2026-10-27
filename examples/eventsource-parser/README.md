@@ -1,6 +1,6 @@
 # Real parser adapter / 真实解析器适配示例
 
-This optional example uses **eventsource-parser 4.1.2**, pinned exactly in its own manifest and integrity-locked in `package-lock.json`. Requires **Node.js ≥22.12** and npm. The root package and its 93 tests still need no installation.
+This optional example uses **eventsource-parser 4.1.2**, pinned exactly in its own manifest and integrity-locked in `package-lock.json`. Requires **Node.js ≥22.12** and npm. The root package and its 98 tests still need no installation.
 
 From the repository root, install once (network required), then run offline:
 
@@ -42,7 +42,7 @@ Dependency review: [eventsource-parser 4.1.2](https://github.com/rexxars/eventso
 
 ## 中文
 
-这个可选示例固定使用 **eventsource-parser 4.1.2**，独立的锁文件记录下载地址和完整性摘要。需要 **Node.js ≥22.12** 与 npm。根目录的核心和 93 项测试仍无需安装依赖；此示例的 26 项集成测试单独执行。
+这个可选示例固定使用 **eventsource-parser 4.1.2**，独立的锁文件记录下载地址和完整性摘要。需要 **Node.js ≥22.12** 与 npm。根目录的核心和 98 项测试仍无需安装依赖；此示例的 26 项集成测试单独执行。
 
 在仓库根目录运行（首次安装需要联网，之后测试和演示可离线运行）：
 

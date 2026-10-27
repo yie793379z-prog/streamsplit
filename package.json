@@ -14,7 +14,8 @@
     "demo:limits": "node examples/limits-demo.js",
     "demo:reduce": "node examples/reduce-demo.js",
     "demo:broken": "node src/cli.js check --broken",
-    "replay": "node src/cli.js replay"
+    "replay": "node src/cli.js replay",
+    "demo:custom": "node examples/custom-consumer.js"
   },
   "license": "MIT",
   "exports": {

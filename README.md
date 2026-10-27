@@ -81,6 +81,8 @@ CLI exit codes: `0` all assertions pass; `1` a regression is detected; `2` inval
 
 ## Test your consumer
 
+Start with the [complete custom-consumer recipe](docs/CUSTOM-CONSUMER.md): a hand-written fixture, fresh-state adapter, failure capture, JSON serialization, and replay with broken/fixed consumers. Run `node examples/custom-consumer.js` (or `npm run demo:custom`); it needs no installation and writes no files.
+
 The library API accepts a function that receives `Uint8Array[]` and returns an event array, synchronously or asynchronously. Normalize each event to exactly `{ type, data, lastEventId }`, with string values. Instantiate fresh parser state inside every adapter invocation. Your adapter owns finishing or closing its parser.
 
 ```js
@@ -110,7 +112,7 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 93 dependency-free core tests; CI runs the core and both optional suites.
+Installation needs network access once; tests and demo then run offline. Expected: **26 adapter tests pass; 20 fixtures, 1183 partition checks, 0 failures**. The demo also verifies version-1 UTF-8 replay. See the linked bilingual guide for exact output, ID normalization, negative controls, and license details. Root `node --test` runs the 98 dependency-free core tests; CI runs the core and both optional suites.
 
 ### Replay an already-fixed upstream bug
 
@@ -224,7 +226,7 @@ Budget 2: 4 cuts remain; budget-exhausted; original failure preserved
 
 ## Verification
 
-The core has 93 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, 22 cut-reduction checks, and six demo/documentation checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay. The separate historical BOM comparison adds 12 tests and verifies the expected 12/3 (4.1.0) versus 12/0 (4.1.2) partition results; those historical failures are required for its tests to pass.
+The core has 98 tests, including 21 end-to-end CLI checks, 16 input-boundary checks, 22 cut-reduction checks, six earlier demo/documentation checks, and five custom-consumer recipe checks. The good consumer passes all 803 partition checks; the deliberately broken consumer produces 66 failures across UTF-8/BOM cases. The optional real-parser suite adds 26 tests and checks 1183 partitions across 20 fixtures, including deliberate decoding/ID mistakes and version-1 replay. The separate historical BOM comparison adds 12 tests and verifies the expected 12/3 (4.1.0) versus 12/0 (4.1.2) partition results; those historical failures are required for its tests to pass.
 
 Hosted CI passed the 40-test baseline [`542abf4`](https://github.com/yie793379z-prog/streamsplit/commit/542abf45e4cc2056879a8ddc451a853954ba1c31) on Node 22 and 24 ([run](https://github.com/yie793379z-prog/streamsplit/actions/runs/39602457939)). The [CI workflow](.github/workflows/ci.yml) now runs core and optional adapter suites for pushes to `main` and pull requests; check the badge or [GitHub Actions](https://github.com/yie793379z-prog/streamsplit/actions/workflows/ci.yml) for the current revision. See [verification details](docs/VERIFICATION.md) and the [daily roadmap](docs/ROADMAP.md).
 
@@ -303,6 +305,10 @@ PASS: version-1 replay remains compatible
 
 这些是输入/工作量边界，不是安全沙箱或总内存保证；消费者代码及输出、JavaScript getter/proxy 等仍须可信，不提供超时、子进程隔离或输出配额。完整规则见 [Input limits and validation](#input-limits-and-validation)。
 
+### 接入自己的消费者
+
+[完整双语 API 指南](docs/CUSTOM-CONSUMER.md)串起手写夹具、每次新建状态的适配器、失败选择、JSON 序列化和同一工件的红绿重放。运行 `node examples/custom-consumer.js`（或 `npm run demo:custom`），无需依赖、不写文件。指南说明无失败时不创建工件、异步适配、三字段规范化及 CLI 与自定义适配器的区别。
+
 ### 可选：真实第三方解析器
 
 已提供固定版本 **eventsource-parser 4.1.2** 的[双语适配示例](examples/eventsource-parser/README.md)，需要 **Node ≥22.12**。首次安装需要联网，之后运行离线：
@@ -313,7 +319,7 @@ npm test --prefix examples/eventsource-parser
 node examples/eventsource-parser/demo.js
 ```
 
-预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 93 项核心测试；CI 分别执行核心及两个可选示例的测试。依赖采用 MIT 许可，无运行时传递依赖。
+预期 26 项集成测试通过、20 个夹具共 1183 次分块检查零失败，并成功重放旧版 UTF-8 失败数据。测试包含 ID 保留/清空、空块、混合换行及两种故意错误的负对照。根目录 `node --test` 运行无需依赖的 98 项核心测试；CI 分别执行核心及两个可选示例的测试。依赖采用 MIT 许可，无运行时传递依赖。
 
 ### 复现已修复的上游历史缺陷
 
@@ -325,7 +331,7 @@ npm test --prefix examples/eventsource-parser-bom-history
 node examples/eventsource-parser-bom-history/demo.js
 ```
 
-需要 Node ≥22.12，预期新增的 **12 项独立测试通过**。演示仅在旧版失败和新版通过均被断言后退出 `0`，不写文件；首次安装联网，之后离线。精确输出、历史来源及许可说明见链接中的双语指南。根目录 93 项核心测试仍无需安装依赖。
+需要 Node ≥22.12，预期新增的 **12 项独立测试通过**。演示仅在旧版失败和新版通过均被断言后退出 `0`，不写文件；首次安装联网，之后离线。精确输出、历史来源及许可说明见链接中的双语指南。根目录 98 项核心测试仍无需安装依赖。
 
 ### 缩减失败切分
 

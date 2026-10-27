@@ -1,5 +1,17 @@
 # Verification
 
+## Custom-consumer recipe: 2026-10-27
+
+Verified locally on Linux x64 with Node.js **22.23.3 and 24.22.1**: **98 core + 26 optional adapter + 12 historical BOM tests passed on each runtime**, zero failures or skips. The new five core tests verify the hand-written synthetic fixture/oracle, deterministic serialized failure and red/green replay, async/fresh adapter state, subprocess output/exit/no writes, and both language output blocks in [the guide](CUSTOM-CONSUMER.md). `node examples/custom-consumer.js` checks 46 partitions over 45 bytes and saves the first failing cut `[40]` as an in-memory version-1 JSON string; both replay assertions fail with the negative control and pass with the streaming adapter. It writes no files.
+
+This increment is based on main `0f1e06b29a0ccbe94434981ca729a51598c08d9c`. Its [exact hosted baseline run](https://github.com/yie793379z-prog/streamsplit/actions/runs/40288397759) succeeded on Node 22/24, resolving the historical section's then-pending CI status. That baseline success is not hosted verification of this recipe increment: verify the exact new commit after publication. The older sections below are dated records, not current unverified-platform claims.
+
+No core API, CLI behavior, replay format, dependencies, action pins, or workflow permissions changed. The root remains dependency-free. Existing optional locks were installed with lifecycle scripts disabled; installed package versions, MIT licenses and absence of runtime dependencies were rechecked. One initial optional installation failed because the default npm cache was unavailable; retrying with a task-local temporary cache succeeded, and both optional suites were then rerun successfully. No failed installation run is counted as a passing test.
+
+Changed source/tests/docs were reviewed for secrets, private captures and local paths; the fixture is original synthetic text. This is a scoped check, not a full security audit. No browser, other OS, full-conformance, performance, or real-user validation claim is made. The recipe fills a visible first-use gap; it does not prove demand or cause Star growth.
+
+中文：2026-10-27 在 Linux x64 的 Node 22.23.3 和 24.22.1 上实测各 98 项核心、26 项适配器、12 项历史 BOM 测试，全通过且无跳过。新增五项测试覆盖手写预期、确定性 JSON 红绿重放、异步/状态隔离、精确输出、不写文件及双语文档。旧 BOM 基线的远端 CI 已通过；本次新提交仍需独立核验。无新依赖、权限、核心 API 或 CLI 变化；没有把功能完成当作 Star 增长。
+
 ## Historical BOM example: 2026-10-26
 
 Verified locally on **macOS arm64, Node.js v24.14.1, npm 11.11.0**: **93 core + 26 existing adapter + 12 historical BOM tests pass**, with no skipped tests. This increment is based on main `dd79470db07fa066d920e83934012ece254c5793`. It adds an isolated optional comparison of real `eventsource-parser` 4.1.0 and 4.1.2; the current 4.1.2 adapter, root dependencies, CLI, public exports, and version-1 replay format are unchanged. The adapter README's stale 69-core-test count was corrected to 93 in both languages.
